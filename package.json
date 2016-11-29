@@ -48,7 +48,7 @@
   },
   "bin": "insight.js",
   "scripts": {
-    "start": "node insight.js"
+    "start": "./start"
   },
   "dependencies": {
     "async": "*",
