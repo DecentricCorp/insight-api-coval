@@ -82,7 +82,7 @@ var bitcoindConf = {
 
 var enableRatelimiter = process.env.ENABLE_RATELIMITER === 'true';
 var enableEmailstore = process.env.ENABLE_EMAILSTORE === 'true';
-var loggerLevel = process.env.LOGGER_LEVEL || 'info';
+var loggerLevel = process.env.LOGGER_LEVEL || 'debug';
 var enableHTTPS = process.env.ENABLE_HTTPS === 'true';
 var enableCurrencyRates = process.env.ENABLE_CURRENCYRATES === 'true';
 

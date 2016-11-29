@@ -8,13 +8,14 @@ WORKDIR /usr/src/
 # -- Private npm attempt
 RUN git clone https://github.com/DecentricCorp/insight-api-coval.git
 WORKDIR /usr/src/insight-api-coval/
+RUN git pull
 RUN npm install -g n
 RUN n 0.10.36
 RUN npm install
 # -- Expose ports
 WORKDIR /usr/src/insight-api-coval/
 EXPOSE 3027
-CMD [ "bash", "./usr/src/insight-api-coval/start2" ]
+CMD [ "bash", "/usr/src/insight-api-coval/start2" ]
 #ENTRYPOINT ["a8sidecar", "node", "index.js"]
 
 
