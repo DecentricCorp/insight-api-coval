@@ -3,7 +3,7 @@
     if [ -n "$1" ]; then
 
     #----- Build on Bluemix
-    #cf ic build -t registry.ng.bluemix.net/$1/insight-api-coval .
+    cf ic build -t registry.ng.bluemix.net/$1/coval-explorer . --no-cache
 
     #----- Create instance on Bluemix
     echo "Starting Bluemix Volume handling"
@@ -33,13 +33,13 @@
         echo $create
     fi
     #cf ic run -p 3027:3027 -m 2048 --name insite-api-coval registry.ng.bluemix.net/$1/insight-api-coval
-    bluemix ic group-create --name insight-api-coval \
+    bluemix ic group-create --name coval-explorer \
                 --publish 3027 --memory 2048 --auto \
-                --hostname legacy-api \
-                --domain cov.al \
+                --hostname coval-explorer \
+                --domain mybluemix.net \
                 --min 1 --max 2 --desired 1 \
                 --volume legacyledgershare:/root/.coval-insight \
-                registry.ng.bluemix.net/$1/insight-api-coval
+                registry.ng.bluemix.net/$1/coval-explorer
 else
     echo "Please provide a name for this deployment"
 fi
