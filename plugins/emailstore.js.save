@@ -14,13 +14,21 @@
   var nodemailer = require('nodemailer');
   var querystring = require('querystring');
   var moment = require('moment');
-  var sqlite3 = require('sqlite3').verbose()
+
   var logger = require('../lib/logger').logger;
   var globalConfig = require('../config/config');
-  var speakeasy = require('speakeasy')
+
   var emailPlugin = {};
-  var dblite
-  var next
+
+
+//clear LOCK
+var fs = require('fs');
+
+fs.unlink('/home/coin/.insight/emailstore/LOCK', function (err) {
+  if (err) throw err;
+  console.log('successfully deleted /home/coin/.insight/emailstore/LOCK');
+});
+
 
   /**
    * Constant enum with the errors that the application may return
@@ -31,7 +39,7 @@
       message: 'Missing required parameter'
     },
     SHOULD2FA: {
-      code: 401,
+      code: 404,
       message: 'You need to use 2 Factor /authentication before being allowed in'
     },
     INVALID_REQUEST: {
@@ -63,38 +71,37 @@
       message: 'Could not send verification email',
     },
   };
-  
   var emailTo2Fa = function(email) {
-    return EMAIL_TO_2FA + twoSha256(email).toString('hex')
+    return EMAIL_TO_2FA + bitcore.util.twoSha256(email).toString('hex')
   }
-  
-  function twoSha256(data) {
-    return sha256(sha256(data));
+  var emailToRequire2Fa = function(email) {
+    return EMAIL_TO_REQUIRE_2FA + bitcore.util.twoSha256(email).toString('hex')
+  }
+  var emailToNeed2Fa = function(email) {
+    return EMAIL_TO_NEED_2FA + bitcore.util.twoSha256(email).toString('hex')
+  }
+  var EMAIL_TO_2FA = 'email-to-2fa-'
+  var EMAIL_TO_REQUIRE_2FA = 'email-to-require-2fa'
+  var EMAIL_TO_NEED_2FA = 'email-to-need-2fa'
+  var EMAIL_TO_PASSPHRASE = 'email-to-passphrase-';
+  var STORED_VALUE = 'emailstore-';
+  var ITEMS_COUNT = 'itemscount-';
+  var PENDING = 'pending-';
+  var VALIDATED = 'validated-';
+
+  var SEPARATOR = '#';
+
+  var UNCONFIRMED_PER_ITEM_QUOTA = 1024 * 150; /*  150 kb */
+  var CONFIRMED_PER_ITEM_QUOTA = 1024 * 300; /* 300 kb */
+
+  var UNCONFIRMED_ITEMS_LIMIT = 6;
+  var CONFIRMED_ITEMS_LIMIT = 11;
+
+  var POST_LIMIT = 1024 * 300 /* Max POST 300 kb */ ;
+
+  var valueKey = function(email, key) {
+    return STORED_VALUE + bitcore.util.twoSha256(email + SEPARATOR + key).toString('hex');
   };
-
-  function sha256(data) {
-   return new Buffer(crypto.createHash('sha256').update(data).digest('binary'), 'binary');
-  };
-	var EMAIL_TO_2FA = 'email-to-2fa-'
-	var EMAIL_TO_PASSPHRASE = 'email-to-passphrase-';
-	var STORED_VALUE = 'emailstore-';
-	var ITEMS_COUNT = 'itemscount-';
-	var PENDING = 'pending-';
-	var VALIDATED = 'validated-';
-
-	var SEPARATOR = '#';
-
-	var UNCONFIRMED_PER_ITEM_QUOTA = 1024 * 150; /*  150 kb */
-	var CONFIRMED_PER_ITEM_QUOTA = 1024 * 300; /* 300 kb */
-
-	var UNCONFIRMED_ITEMS_LIMIT = 6;
-	var CONFIRMED_ITEMS_LIMIT = 11;
-
-	var POST_LIMIT = 1024 * 300 /* Max POST 300 kb */ ;
-
-	var valueKey = function(email, key) {
-		return STORED_VALUE + bitcore.util.twoSha256(email + SEPARATOR + key).toString('hex');
-	};
 
 
   var countKey = function(email) {
@@ -118,70 +125,16 @@
    *
    * @param {Object} config
    */
- var path = globalConfig.leveldb + '/emailstore' + (globalConfig.name ? ('-' + globalConfig.name) : '');
   emailPlugin.init = function(config) {
     logger.info('Using emailstore plugin');
 
-    path = globalConfig.leveldb + '/emailstore' + (globalConfig.name ? ('-' + globalConfig.name) : '');
+    var path = globalConfig.leveldb + '/emailstore' + (globalConfig.name ? ('-' + globalConfig.name) : '');
     emailPlugin.db = config.db || globalConfig.db || levelup(path);
 
     emailPlugin.email = config.emailTransport || nodemailer.createTransport(config.email);
 
     emailPlugin.textTemplate = config.textTemplate || 'copay.plain';
     emailPlugin.htmlTemplate = config.htmlTemplate || 'copay.html';
-    
-//========2fa db
-function createDb(cb) {
-	next = cb
-    //console.log("createDb 2fa")
-    dblite = new sqlite3.Database('2fa.sqlite3', createTable);
-}
-
-function initDb(cb) {
-	next = cb
-    //console.log("createDb 2fa")
-    dblite = new sqlite3.Database('2fa.sqlite3',next);
-}
-
-
-function createTable() {
-    dblite.run("CREATE TABLE IF NOT EXISTS backup (key TEXT, value TEXT)")
-    dblite.run("CREATE TABLE IF NOT EXISTS users (email TEXT, enabled INTEGER, twofa TEXT, need INTEGER)",seed)
-}
-
-function insertUserRow(email, enabled, cb) {
-    //console.log("insertUserRow email "+email)
-    var stmt = dblite.prepare("INSERT INTO users VALUES (?, ?, ?, ?)")
-    stmt.run(email,enabled,0,0)
-    stmt.finalize(readAllRows)
-}
-
-function readAllRows() {
-    //console.log("readAllRows users")
-    dblite.all("SELECT * FROM users", function(err, rows) {
-        rows.forEach(function (row) {
-            console.log(row.email + " : "+row.enabled)
-        })
-    })
-}
-
-function closeDb() {
-    console.log("closeDb")
-    dblite.close()
-}
-
-function seed(){
-	insertUserRow(emailTo2Fa('genecyber@gmail.com'),1,function(){})
-}
-
-initDb(function(){
-    console.log("2 Factor Loaded")
-    dblite.close()
-})
-
-emailPlugin.dblite = dblite
-emailPlugin.initDb = initDb
-//==========
 
     emailPlugin.crypto = config.crypto || crypto;
 
@@ -210,11 +163,9 @@ emailPlugin.initDb = initDb
    *                                      will be called, terminating the request.
    */
   emailPlugin.returnError = function(error, response) {
-try {
     response.status(error.code).json({
       error: error.message
     }).end();
-} catch(err){console.log(err)}
   };
 
   /**
@@ -240,16 +191,16 @@ try {
         emailPlugin.makeEmailHTMLBody({
           email: email,
           confirm_url: confirmUrl,
-          title: 'Thanks for creating a RibbitRewards Wallet. Please Confirm.'
+          title: 'Your wallet backup needs confirmation'
         }, callback);
       }
     ], function(err, results) {
       var emailBody = results[0];
       var emailBodyHTML = results[1];
       var mailOptions = {
-        from: 'wallet@ribbit.me',
+        from: 'copay@copay.io',
         to: email,
-        subject: '[RibbitRewards] Thanks for creating a RibbitRewards Wallet. Please Confirm.',
+        subject: '[Copay] Your wallet backup needs confirmation',
         text: emailBody,
         html: emailBodyHTML
       };
@@ -310,8 +261,6 @@ try {
    * @param {Function(err, boolean)} callback
    */
   emailPlugin.checkPassphrase = function(email, passphrase, callback) {
-try {
-  console.log("+++++PASS:    "+passphrase)
     emailPlugin.db.get(emailToPassphrase(email), function(err, retrievedPassphrase) {
       if (err) {
         if (err.notFound) {
@@ -322,7 +271,6 @@ try {
        }
       return callback(err, passphrase === retrievedPassphrase);
     });
-} catch(err){console.log(err)}
   };
 
 
@@ -332,12 +280,6 @@ try {
    * @param {Function(err)} callback
    */
   emailPlugin.savePassphrase = function(email, passphrase, callback) {
-      emailPlugin.initDb(function(){
-        emailPlugin.saveBackup(emailToPassphrase(email), passphrase,function(){
-          console.log("saved a backup")
-        })
-      })
-        
     emailPlugin.db.put(emailToPassphrase(email), passphrase, function(err) {
       if (err) {
         logger.error('error saving passphrase', err);
@@ -365,190 +307,89 @@ try {
     logger.info('Storage size:', size);
     return callback(err);
   };
-//===========================================================2FA Methods
 
-emailPlugin.saveBackup = function(key,value,cb){
-  console.log(key)
-  console.log(value)
-  var stmt = dblite.prepare("INSERT INTO backup VALUES (?, ?)")
-    stmt.run(key,value)
-    return stmt.finalize(function(){
-    	return cb(true)
+  emailPlugin.get2Fa = function(email, callback) {
+    emailPlugin.db.get(emailTo2Fa(email), function(err, retrievedKey) {
+      if (err) {
+        if (err.notFound) {
+          return callback(err,retrievedKey )
+        }
+          return callback(err,retrievedKey )
+      }
+      return callback(err, retrievedKey)
     })
-}
+  }
 
-emailPlugin.insertUser = function(email, enabled, cb) {
-	email = emailTo2Fa(email)
-	var isEnabled = 0
-	if (enabled == true)
-		isEnabled = 1
-	var stmt = dblite.prepare("INSERT INTO users VALUES (?, ?, ?, ?)")
-    stmt.run(email,isEnabled,0,0)
-    return stmt.finalize(function(){
-    	cb(true)
+emailPlugin.should2Fa = function(email, callback) {
+    emailPlugin.db.get(emailToRequire2Fa(email), function(err, should) {
+      return callback(err, should == "true")
     })
-}
+  }
 
-emailPlugin.userExistsOrAdd = function(email, cb) {
-	emailPlugin.userExists(email, function(exists){
-		if (!exists)
-			emailPlugin.insertUser(email,false,function(){
-				return cb(true)
-			})
-		else return cb(true)
-	})
-}
+emailPlugin.can2Fa = function(email, callback) {
+    emailPlugin.db.get(emailTo2Fa(email), function(err, keyObj) {
+        if (!err)
+            console.log("Register your device here: " +JSON.parse(keyObj).google_auth_qr)
+      return callback(err, keyObj != null && keyObj !== undefined)
+    })
+  }
 
-emailPlugin.userDelete = function(email, cb) {
-	email = emailTo2Fa(email)
-	var stmt = dblite.prepare("delete from users where email = ?")
-    stmt.run(email)
-    return stmt.finalize(cb)
-}
+emailPlugin.need2Fa = function(email, callback) {
+    emailPlugin.db.get(emailToNeed2Fa(email), function(err, need) {
+      console.log("You need to authenticate with your second factor")
+      return callback(err, keyObj != null && keyObj !== undefined)
+    })
+  }
 
-emailPlugin.userExists = function(email, cb) {
-	email = emailTo2Fa(email)
-	var query = 'SELECT * from users where email = "'+email+'" limit 1'
-	dblite.get(query, function(err, row) {
-		if (row === undefined || err != null || row == "" || row == null)
-			return cb(false)
-		return cb(true)
-	})
-}
+emailPlugin.saveShould2Fa = function(email, should, callback) {
+    emailPlugin.db.put(emailToRequire2Fa(email), should, function(err) {
+      return callback(err === undefined)
+    })
+  }
+
+emailPlugin.saveNeed2Fa = function(email, need, callback) {
+    emailPlugin.db.put(emailToNeed2Fa(email), need, function(err) {
+      return callback(err === undefined)
+    })
+  }
 
 emailPlugin.generateGoogle2Fa = function(callback){    
     return callback(speakeasy.generate_key({google_auth_qr: true, name: "RibbitRewardsWallet"}))
 }
 
-emailPlugin.should2Fa = function(email, cb) {
-	email = emailTo2Fa(email)
-	var query = 'SELECT enabled from users where email = "'+email+'" limit 1'
-	dblite.get(query, function(err, row) {
-		if (row !== undefined)
-			return cb(row.enabled == 1)
-		else return cb(false)
-	})
-}
-emailPlugin.saveShould2Fa = function(email, should, callback){
-	email = emailTo2Fa(email)
-	var enabled = 0
-	if (should) enabled = 1
-	var query = 'UPDATE users set enabled = '+enabled+' where email = "'+email+'"'
-	dblite.run(query, function(err, row) {
-		return callback(err == null)
-	})
+//emailPlugin.calculateCode = function(email, keyObj, callback) {
+//    return callback(null, speakeasy.time({key: JSON.parse(keyObj).base32, encoding: 'base32', name:'RibbitRewardsWallet'}))
+//}
+
+emailPlugin.calculateCode = function(email, callback) {
+    emailPlugin.get2Fa(email, function(err, keyObj){
+        return callback(err, speakeasy.time({key: JSON.parse(keyObj).base32, encoding: 'base32', name:'RibbitRewardsWallet'}))
+    })    
 }
 
-emailPlugin.can2Fa = function(email, callback) {
-	email = emailTo2Fa(email)
-	var query = 'SELECT twofa from users where email = "'+email+'"'
-    dblite.get(query, function(err, row) {
-    	//console.log(row)
-		return callback(row !== undefined && row != null && row.twofa != "" && row.twofa != 0)
-	})
-}
-
-emailPlugin.get2Fa = function(email, callback) {
-	email = emailTo2Fa(email)
-	var query = 'SELECT twofa from users where email = "'+email+'"'
-    dblite.get(query, function(err, row) {
-    	//console.log(row.twofa)
-		return callback(row)
-	})
-}
-
-emailPlugin.saveCan2Fa = function(email, callback) {
-    email = emailTo2Fa(email)
-    emailPlugin.generateGoogle2Fa(function(code){
-    	code = JSON.stringify(code)
-    	var query = "UPDATE users set twofa = '"+code+"' where email = '"+email+"'"
-	    dblite.get(query, function(err, row) {
-			return callback(err == null && row === undefined)
-		})
-    })
-}
+emailPlugin.save2Fa = function(email, code, callback) {
+    emailPlugin.db.put(emailTo2Fa(email), code, function(err) {
+      if (err) {
+        logger.error('error saving 2FaCode', err);
+        return callback("INTERNAL_ERROR");
+      }
+      return callback(null);
+    });
+  };
 
 emailPlugin.delete2Fa = function(email, callback) {
-	email = emailTo2Fa(email)
-    var query = 'UPDATE users set twofa = "" where email = "'+email+'"'
-    dblite.run(query, function(err) {
-		return callback(err == null)
-	})
-}
-
-emailPlugin.need2Fa = function(email, callback) {
-	email = emailTo2Fa(email)
-    var query = 'SELECT need from users where email = "'+email+'"'
-    dblite.get(query, function(err, row) {
-    	var need = 0
-    	if (row.need == 1)
-    		need = 1
-		return callback(need != 0)
-	})
-  }
+    emailPlugin.db.del(emailTo2Fa(email), function(error) {
+      if (error) {
+        logger.error(error);
+        if (error.notFound) {
+          return callback("NOT_FOUND")
+        }
+        return callback("INTERNAL_ERROR")
+      }
+      return callback("success")
+    });
+  };
   
-emailPlugin.saveNeed2FA = function(email, need, callback){
-	email = emailTo2Fa(email)
-	var isNeeded = 0
-	if (need) isNeeded = 1
-	console.log(isNeeded+" need? "+need)
-	var query = 'UPDATE users set need = '+isNeeded+' where email = "'+email+'"'
-	dblite.run(query, function(err, row) {
-		return callback(err == null)
-	})
-}
-
-emailPlugin.allowLogin = function(email,cb) {
-	var should2FA = false;
-	var can2FA = false;
-	var need2FA = false;
-
-	async.waterfall([
-		function(callback) {
-			emailPlugin.userExistsOrAdd(email,function(should){
-                //console.log("in add user ")
-				callback(null,should)
-			})
-		},
-		function(err, callback) {
-			emailPlugin.should2Fa(email,function(should){
-				should2FA = should
-				//console.log("in should "+should2FA)
-
-				callback(null,should)
-			})
-		},
-		function(err,callback) {
-			emailPlugin.can2Fa(email,function(can){
-				//console.log("can thinks: "+can)
-				can2FA = can
-                //console.log("in can "+can2FA)
-				callback(null,can)
-			})
-		},
-		function(err,callback) {
-			emailPlugin.need2Fa(email,function(need){
-				need2FA = need
-                //console.log("in need "+ need)
-
-				callback(null, need)
-			})
-		},
-	],
-	function(err, result) {
-		//console.log("check things can: "+can2FA)
-		//console.log(should2FA)
-		//console.log(should2FA && !can2FA)
-		//console.log(should2FA && can2FA && !need2FA)
-		console.log("sending enabled = "+should2FA)
-		cb( should2FA == false ||
-			  should2FA && !can2FA ||
-			  should2FA && can2FA && !need2FA ||
-			  false, should2FA 		)
-	})
-}
-
-//=======================================================END 2FA Methods
 
   emailPlugin.checkAndUpdateItemCounter = function(email, isConfirmed, isAdd, callback) {
     // this is a new item... Check User's Items quota.
@@ -568,13 +409,7 @@ emailPlugin.allowLogin = function(email,cb) {
         if (counter > 0) counter--;
       }
 
-      
-      emailPlugin.initDb(function(){
-        emailPlugin.saveBackup(countKey(email), counter,function(){
-          console.log("saved a backup")
-        })
-      })
-      
+
       emailPlugin.db.put(countKey(email), counter, function(err) {
         if (err) {
           logger.error('error saving counter');
@@ -616,14 +451,6 @@ emailPlugin.allowLogin = function(email,cb) {
    * @param {Function(err)} callback
    */
   emailPlugin.saveEncryptedData = function(email, key, record, callback) {
-      emailPlugin.initDb(function(){
-        console.log(email)
-        console.log(key)
-        
-        emailPlugin.saveBackup(valueKey(email, key), record,function(){
-          console.log("saved a backup")
-        })
-      })
     emailPlugin.db.put(valueKey(email, key), record, function(err) {
       if (err) {
         logger.error('error saving encrypted data', email, key, record, err);
@@ -663,11 +490,6 @@ emailPlugin.allowLogin = function(email,cb) {
           secret: secret,
           created: moment().unix(),
         };
-        emailPlugin.initDb(function(){
-          emailPlugin.saveBackup(pendingKey(email), JSON.stringify(value),function(){
-            console.log("saved a backup")
-          })
-        })
         emailPlugin.db.put(pendingKey(email), JSON.stringify(value), function(err) {
           if (err) {
             logger.error('error saving pending data:', email, value);
@@ -687,40 +509,15 @@ emailPlugin.allowLogin = function(email,cb) {
    */
   emailPlugin.retrieveByEmailAndKey = function(email, key, callback) {
     emailPlugin.db.get(valueKey(email, key), function(error, value) {
-      
-    if (error) {
-      if (error.notFound) {
-        return callback(emailPlugin.errors.NOT_FOUND);
+      if (error) {
+        if (error.notFound) {
+          return callback(emailPlugin.errors.NOT_FOUND);
+        }
+        return callback(emailPlugin.errors.INTERNAL_ERROR);
       }
-      return callback(emailPlugin.errors.INTERNAL_ERROR);
-    }
-    var isProfile = key.indexOf("profile") > -1
-    var isEmail = key.indexOf("email") > -1
-    
-	  console.log("lets 2fa here ")
-	  
-	  emailPlugin.initDb(function(){
-	    emailPlugin.allowLogin(email,function(allow,enabled){
-    		console.log("can we log in yet? "+allow)
-    		if (!allow && isProfile) {
-    			return callback(emailPlugin.errors.SHOULD2FA)
-    		}
-    		if (allow && enabled) {
-    			    console.log("this is a profile request")
-    			    console.log("allow 0")
-        			emailPlugin.saveNeed2FA(email,true,function(err){
-        			  console.log("I set need 2fa "+err)
-        			  return callback(null, value)
-              })
-    		}
-    		else {
-    		  console.log("allow 2")
-    			return callback(null, value)
-    		}
-    	})
-	  })
-  });
-};
+      return callback(null, value);
+    });
+  };
 
   emailPlugin.deleteByEmailAndKey = function deleteByEmailAndKey(email, key, callback) {
     emailPlugin.db.del(valueKey(email, key), function(error) {
@@ -780,14 +577,12 @@ emailPlugin.allowLogin = function(email,cb) {
     request.on('data', function(data) {
       queryData += data;
       if (queryData.length > POST_LIMIT) {
-        queryData = ''; 
-	try {
-          response.writeHead(413, {
-            'Content-Type': 'text/plain'
-         });
+        queryData = '';
+        response.writeHead(413, {
+          'Content-Type': 'text/plain'
+        });
         response.end();
         request.connection.destroy();
-	} catch(err){console.log(err)}
       }
     }).on('end', function() {
       var params = querystring.parse(queryData);
@@ -817,7 +612,10 @@ emailPlugin.allowLogin = function(email,cb) {
               emailPlugin.checkPassphrase(email, passphrase, function(err, match) {
                 if (err) return callback(err);
                 if (!match) return callback(emailPlugin.errors.EMAIL_TAKEN);
-		 
+		 emailPlugin.should2Fa(email,function(err, should){
+       			 console.log("should 2fa")
+       			 return callback(emailPlugin.errors.INVALID_CODE);
+		    })
 
                 return callback();
               });
@@ -871,10 +669,9 @@ emailPlugin.allowLogin = function(email,cb) {
       function(err) {
         if (err) {
           if (isNewProfile && !isConfirmed && errorCreating) {
-            //emailPlugin.deleteWholeProfile(email, function() {
-		//console.log("should be blocking")
-              //return emailPlugin.returnError(err, response);
-            //});
+            emailPlugin.deleteWholeProfile(email, function() {
+              return emailPlugin.returnError(err, response);
+            });
           }
 
           emailPlugin.returnError(err, response);
@@ -986,14 +783,13 @@ emailPlugin.allowLogin = function(email,cb) {
    */
   emailPlugin.retrieve = function(request, response) {
     emailPlugin.authorizeRequestWithKey(request, function(err, email, key) {
-      //emailPlugin.dblite.close()
       if (err)
         return emailPlugin.returnError(err, response);
 
       emailPlugin.retrieveByEmailAndKey(email, key, function(err, value) {
         if (err)
           return emailPlugin.returnError(err, response);
-        
+
 
         emailPlugin.addValidationAndQuotaHeader(response, email, function(err) {
           if (err)
@@ -1121,11 +917,7 @@ emailPlugin.allowLogin = function(email,cb) {
       if (value !== secret) {
         return emailPlugin.returnError(emailPlugin.errors.INVALID_CODE, response);
       }
-      emailPlugin.initDb(function(){
-        emailPlugin.saveBackup(validatedKey(email), true,function(){
-          console.log("saved a backup")
-        })
-      })
+
       emailPlugin.db.put(validatedKey(email), true, function(err, value) {
         if (err) {
           return emailPlugin.returnError({
@@ -1167,12 +959,10 @@ emailPlugin.allowLogin = function(email,cb) {
         queryData += data;
         if (queryData.length > POST_LIMIT) {
           queryData = '';
-try {
           response.writeHead(413, {
             'Content-Type': 'text/plain'
           }).end();
           request.connection.destroy();
-} catch(err){console.log(err)}
         }
       }).on('end', function() {
         var params = querystring.parse(queryData);
@@ -1234,12 +1024,10 @@ try {
       queryData += data;
       if (queryData.length > UNCONFIRMED_PER_ITEM_QUOTA) {
         queryData = '';
-try {
         response.writeHead(413, {
           'Content-Type': 'text/plain'
         }).end();
         request.connection.destroy();
-} catch(err){console.log(err)}
       }
     }).on('end', function() {
       var params = querystring.parse(queryData);

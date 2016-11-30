@@ -25,14 +25,14 @@ if (process.env.INSIGHT_NETWORK === 'livenet') {
   env = 'livenet';
   db = home;
   port = '3000';
-  b_port = '3764';
-  p2p_port = '3763';
+  b_port = '8332';
+  p2p_port = '3764';
 } else {
   env = 'testnet';
   db = home + '/testnet';
-  port = '3001';
+  port = '3000';
   b_port = '18332';
-  p2p_port = '18333';
+  p2p_port = '13764';
 }
 port = parseInt(process.env.INSIGHT_PORT) || port;
 
@@ -50,7 +50,6 @@ switch (process.env.NODE_ENV) {
 }
 
 var network = process.env.INSIGHT_NETWORK || 'testnet';
-var forceRPCsync = process.env.INSIGHT_FORCE_RPC_SYNC;
 
 var dataDir = process.env.BITCOIND_DATADIR;
 var isWin = /^win/.test(process.platform);
@@ -59,7 +58,7 @@ var isLinux = /^linux/.test(process.platform);
 if (!dataDir) {
   if (isWin) dataDir = '%APPDATA%\\Bitcoin\\';
   if (isMac) dataDir = process.env.HOME + '/Library/Application Support/Bitcoin/';
-  if (isLinux) dataDir = process.env.HOME + '/.bitcoin/';
+  if (isLinux) dataDir = process.env.HOME + '/.ribbitcoind/';
 }
 dataDir += network === 'testnet' ? 'testnet3' : '';
 
@@ -69,20 +68,25 @@ var ignoreCache = process.env.INSIGHT_IGNORE_CACHE || 0;
 
 var bitcoindConf = {
   protocol: process.env.BITCOIND_PROTO || 'http',
-  user: process.env.BITCOIND_USER || 'ribbitcoinrpc',
-  pass: process.env.BITCOIND_PASS || 'GzXqbnrqQWyeVmDjUo8NqUKZo7T32BrsrgN1KcA7mWnh',
-  host: process.env.BITCOIND_HOST || '104.236.26.26',
+  user: process.env.BITCOIND_USER || 'user',
+  pass: process.env.BITCOIND_PASS || 'letmein123',
+  host: process.env.BITCOIND_HOST || '127.0.0.1',
   port: process.env.BITCOIND_PORT || b_port,
   p2pPort: process.env.BITCOIND_P2P_PORT || p2p_port,
-  p2pHost: process.env.BITCOIND_P2P_HOST || process.env.BITCOIND_HOST || '104.236.26.26',
+  p2pHost: process.env.BITCOIND_P2P_HOST || process.env.BITCOIND_HOST || '127.0.0.1',
   dataDir: dataDir,
   // DO NOT CHANGE THIS!
   disableAgent: true
 };
 
+var enableMonitor = process.env.ENABLE_MONITOR === 'true';
+var enableCleaner = process.env.ENABLE_CLEANER === 'true';
+var enableMailbox = process.env.ENABLE_MAILBOX === 'true';
 var enableRatelimiter = process.env.ENABLE_RATELIMITER === 'true';
+var enableCredentialstore = process.env.ENABLE_CREDSTORE === 'true';
 var enableEmailstore = process.env.ENABLE_EMAILSTORE === 'true';
-var loggerLevel = process.env.LOGGER_LEVEL || 'debug';
+var enablePublicInfo = process.env.ENABLE_PUBLICINFO === 'true';
+var loggerLevel = process.env.LOGGER_LEVEL || 'info';
 var enableHTTPS = process.env.ENABLE_HTTPS === 'true';
 var enableCurrencyRates = process.env.ENABLE_CURRENCYRATES === 'true';
 
@@ -91,12 +95,22 @@ if (!fs.existsSync(db)) {
 }
 
 module.exports = {
+  enableMonitor: enableMonitor,
+  monitor: require('../plugins/config-monitor.js'),
+  enableCleaner: enableCleaner,
+  cleaner: require('../plugins/config-cleaner.js'),
+  enableMailbox: enableMailbox,
+  mailbox: require('../plugins/config-mailbox.js'),
   enableRatelimiter: enableRatelimiter,
   ratelimiter: require('../plugins/config-ratelimiter.js'),
+  enableCredentialstore: enableCredentialstore,
+  credentialstore: require('../plugins/config-credentialstore'),
   enableEmailstore: enableEmailstore,
   emailstore: require('../plugins/config-emailstore'),
   enableCurrencyRates: enableCurrencyRates,
   currencyrates: require('../plugins/config-currencyrates'),
+  enablePublicInfo: enablePublicInfo,
+  publicInfo: require('../plugins/publicInfo/config'),
   loggerLevel: loggerLevel,
   enableHTTPS: enableHTTPS,
   version: version,
@@ -119,5 +133,4 @@ module.exports = {
   },
   safeConfirmations: safeConfirmations, // PLEASE NOTE THAT *FULL RESYNC* IS NEEDED TO CHANGE safeConfirmations
   ignoreCache: ignoreCache,
-  forceRPCsync: forceRPCsync,
 };

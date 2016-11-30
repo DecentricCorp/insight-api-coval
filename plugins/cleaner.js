@@ -8,13 +8,12 @@ var CronJob = cron.CronJob;
 
 module.exports.init = function(config) {
   var cronTime = config.cronTime || '0 * * * *';
-  logger.info('Using monitor plugin with cronTime ' + cronTime);
+  logger.info('Using cleaner plugin with cronTime ' + cronTime);
   var onTick = function() {
-    mdb.getAll(function(err, messages) {
+    var limit = microtime.now() - 1000 * 1000 * config.threshold;
+    mdb.removeUpTo(limit, function(err, n) {
       if (err) logger.error(err);
-      else {
-        logger.info('Message db size = ' + messages.length);
-      }
+      else logger.info('Ran cleaner task, removed ' + n);
     });
   };
   var job = new CronJob({

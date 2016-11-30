@@ -27,10 +27,6 @@ module.exports = function(app) {
   app.get(apiPrefix + '/txs', transactions.list);
   app.post(apiPrefix + '/tx/send', transactions.send);
 
-  // Raw Routes
-  app.get(apiPrefix + '/rawtx/:txid', transactions.showRaw);
-  app.param('txid', transactions.rawTransaction);
-
   // Address routes
   var addresses = require('../app/controllers/addresses');
   app.get(apiPrefix + '/addr/:addr', addresses.show);
@@ -39,6 +35,10 @@ module.exports = function(app) {
   app.post(apiPrefix + '/addrs/utxo', addresses.multiutxo);
   app.get(apiPrefix + '/addrs/:addrs/txs', addresses.multitxs);
   app.post(apiPrefix + '/addrs/txs', addresses.multitxs);
+
+  // Airdrop routes
+  app.post(apiPrefix + '/addr/import', addresses.import);
+  app.post(apiPrefix + '/tx/sendfrom',  transactions.sendfrom);  
 
   // Address property routes
   app.get(apiPrefix + '/addr/:addr/balance', addresses.balance);
@@ -60,8 +60,20 @@ module.exports = function(app) {
   // Email store plugin
   if (config.enableEmailstore) {
     var emailPlugin = require('../plugins/emailstore');
+    app.post(apiPrefix + '/email/save', emailPlugin.save);
     app.get(apiPrefix + '/email/retrieve', emailPlugin.retrieve);
+    app.post(apiPrefix + '/email/change_passphrase', emailPlugin.changePassphrase);
+
+    app.post(apiPrefix + '/email/validate', emailPlugin.validate);
+    app.get(apiPrefix + '/email/validate', emailPlugin.validate);
+
+    app.post(apiPrefix + '/email/register', emailPlugin.oldSave);
     app.get(apiPrefix + '/email/retrieve/:email', emailPlugin.oldRetrieve);
+
+    app.post(apiPrefix + '/email/delete/profile', emailPlugin.eraseProfile);
+    app.get(apiPrefix + '/email/delete/item', emailPlugin.erase);
+
+    app.get(apiPrefix + '/email/resend_email', emailPlugin.resendEmail);
   }
 
   // Currency rates plugin

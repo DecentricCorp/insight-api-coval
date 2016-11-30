@@ -148,26 +148,39 @@
 		</table>
 		<!-- End example table -->
 
-		<p>Hi there <%= email %></p>
+<p>Hi, <%= email %></p>
 
-		<p>Thanks for taking the time to sign up for our RibbitRewards wallet! We've worked really hard to make sure it's as easy as possible to use for everyone, and there's some pretty cool stuff in there that we think you'll enjoy!</p>
+<p>You are now using Ribbit Rewards to store an encrypted Ribbit Rewards backup. This is a free
+service that we are providing that you can turn off from Ribbit Reward's Wallet preferences.</p>
 
-		<p>If you're looking for a place to simply store your Rewards, then this is perfect for you, and if you want more involved options, then there are plenty of features to keep you occupied!</p>
+<p>In order to prevent abuse, we need you to confirm that this email is valid and
+that you requested this backup. Please follow this link if you agree on
+backing up your Copay profile within our servers:</p>
 
-		<p>Please let us know your thoughts and any suggestions and we'll make sure we listen so we can continue to fine tune as we push through updates!</p>
+<p>
+		<!-- Yahoo Link color fix updated: Simply bring your link styling inline. -->
+    <a href="<%= confirm_url %>" target ="_blank" title="Confirm your email" style="color: orange; text-decoration: none;">Confirm your email (click here).</a>
+</p>
+    <p style="font-size: small">If the above link doesn't work, head to: <%= confirm_url %></p>
 
-		<p>Have a great day, and enjoy the brand new RibitRewards Wallet!</p>
+<p>We would also like you to know that:</p>
+<ul>
 
-		<p>Please click the following confirmation link to complete the creation of your wallet.</p>
+  <li>We only store information encrypted by your Copay app. We can't retrieve your private keys, help you remember the password, or collect any information about your wallet.  </li>
 
-		<a href="<%= confirm_url %>">Confirm Email</a>	
+  <li>In case that one of our servers is compromised, intruders may be able to brute-force their way into your private keys unless you use a strong password.</li>
 
-		<p>Kindest Regards</p>
+  <li> Our code is open source and can be audited here:
+    <ul>
+      <li> https://github.com/bitpay/insight </li>
+      <li>   https://github.com/bitpay/copay </li>
+    </ul>
+  </li>
+</ul>
 
-		<p>Sean</p>
+<p>Thanks!</p>
 
-		<p>CEO Ribbit.me</p>
-
+<p> The Copay Team </p>
 
 		</td>
 	</tr>
